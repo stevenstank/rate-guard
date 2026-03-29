@@ -1,11 +1,24 @@
 import type { Request } from "express";
 
+export interface TokenBucketRuntimeConfig {
+  capacity: number;
+  refillRate: number;
+  redisKeyPrefix: string;
+  ttlSeconds?: number;
+}
+
 export interface RateLimiterConfig {
-  windowSizeInSeconds: number;
-  maxRequests: number;
+  tokenBucket: TokenBucketRuntimeConfig;
+  errorMessage?: string;
   enableLogging?: boolean;
-  enableFallback?: boolean;
-  prefix?: string;
+  onRedisError?: "fail-open" | "fail-closed";
+  keyGenerator?: (req: Request) => string;
+}
+
+export interface RateLimiterConfigOverrides {
+  tokenBucket?: Partial<TokenBucketRuntimeConfig>;
+  errorMessage?: string;
+  enableLogging?: boolean;
   onRedisError?: "fail-open" | "fail-closed";
   keyGenerator?: (req: Request) => string;
 }

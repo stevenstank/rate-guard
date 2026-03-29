@@ -1,58 +1,65 @@
-import type { RateLimiterConfig } from "../types/rateLimiter.types.js";
-import { validateRateLimiterConfig } from "./validation.js";
+import type { RateLimiterConfigOverrides } from "../types/rateLimiter.types.js";
+import {
+  DEFAULT_RATE_LIMITER_CONFIG,
+  resolveRateLimiterConfig,
+} from "./validation.js";
 
-const defaultRateLimitConfigInput: Readonly<RateLimiterConfig> = {
-  windowSizeInSeconds: 60,
-  maxRequests: 10,
+const defaultRateLimitOverrides: Readonly<RateLimiterConfigOverrides> = {
+  tokenBucket: {
+    capacity: 10,
+    refillRate: 10 / 60,
+  },
   enableLogging: true,
-  enableFallback: true,
-  prefix: "rate_limit",
   onRedisError: "fail-open",
 };
 
-const rlTestRateLimitConfigInput: Readonly<RateLimiterConfig> = {
-  windowSizeInSeconds: 10,
-  maxRequests: 3,
+const loginRateLimitOverrides: Readonly<RateLimiterConfigOverrides> = {
+  tokenBucket: {
+    capacity: 5,
+    refillRate: 5 / 60,
+  },
+  enableLogging: true,
+  onRedisError: "fail-open",
+};
+
+const apiRateLimitOverrides: Readonly<RateLimiterConfigOverrides> = {
+  tokenBucket: {
+    capacity: 100,
+    refillRate: 100 / 60,
+  },
+  enableLogging: true,
+  onRedisError: "fail-open",
+};
+
+const testRateLimitOverrides: Readonly<RateLimiterConfigOverrides> = {
+  tokenBucket: {
+    capacity: 3,
+    refillRate: 3 / 10,
+  },
   enableLogging: false,
-  enableFallback: true,
-  prefix: "rate_limit",
   onRedisError: "fail-open",
 };
 
-const loginRateLimitConfigInput: Readonly<RateLimiterConfig> = {
-  windowSizeInSeconds: 60,
-  maxRequests: 5,
-  enableLogging: true,
-  enableFallback: true,
-  prefix: "rate_limit",
-  onRedisError: "fail-open",
-};
-
-const apiRateLimitConfigInput: Readonly<RateLimiterConfig> = {
-  windowSizeInSeconds: 60,
-  maxRequests: 100,
-  enableLogging: true,
-  enableFallback: true,
-  prefix: "rate_limit",
-  onRedisError: "fail-open",
-};
-
-export const DEFAULT_RATE_LIMIT_CONFIG = validateRateLimiterConfig(
+export const DEFAULT_RATE_LIMIT_CONFIG = resolveRateLimiterConfig(
   "DEFAULT_RATE_LIMIT_CONFIG",
-  defaultRateLimitConfigInput,
+  defaultRateLimitOverrides,
+  DEFAULT_RATE_LIMITER_CONFIG,
 );
 
-export const RL_TEST_RATE_LIMIT_CONFIG = validateRateLimiterConfig(
-  "RL_TEST_RATE_LIMIT_CONFIG",
-  rlTestRateLimitConfigInput,
-);
-
-export const LOGIN_RATE_LIMIT_CONFIG = validateRateLimiterConfig(
+export const LOGIN_RATE_LIMIT_CONFIG = resolveRateLimiterConfig(
   "LOGIN_RATE_LIMIT_CONFIG",
-  loginRateLimitConfigInput,
+  loginRateLimitOverrides,
+  DEFAULT_RATE_LIMIT_CONFIG,
 );
 
-export const API_RATE_LIMIT_CONFIG = validateRateLimiterConfig(
+export const API_RATE_LIMIT_CONFIG = resolveRateLimiterConfig(
   "API_RATE_LIMIT_CONFIG",
-  apiRateLimitConfigInput,
+  apiRateLimitOverrides,
+  DEFAULT_RATE_LIMIT_CONFIG,
+);
+
+export const RL_TEST_RATE_LIMIT_CONFIG = resolveRateLimiterConfig(
+  "RL_TEST_RATE_LIMIT_CONFIG",
+  testRateLimitOverrides,
+  DEFAULT_RATE_LIMIT_CONFIG,
 );

@@ -7,7 +7,6 @@ import type {
   RateLimiterConfig,
 } from "../types/rateLimiter.types.js";
 
-const TOO_MANY_REQUESTS_MESSAGE = "Too many requests";
 const RATE_LIMITER_UNAVAILABLE_MESSAGE = "Rate limiter temporarily unavailable";
 
 interface TooManyRequestsResponse {
@@ -45,9 +44,13 @@ const calculateRetryAfterSeconds = (resetTime: number): number => {
   return Math.ceil(millisecondsUntilReset / 1_000);
 };
 
-const sendTooManyRequestsResponse = (res: Response, resetTime: number): void => {
+const sendTooManyRequestsResponse = (
+  res: Response,
+  resetTime: number,
+  errorMessage: string,
+): void => {
   const responseBody: TooManyRequestsResponse = {
-    error: TOO_MANY_REQUESTS_MESSAGE,
+    error: errorMessage,
     retryAfter: calculateRetryAfterSeconds(resetTime),
   };
   res.status(429).json(responseBody);
@@ -84,6 +87,7 @@ const extractIdentifierFromKey = (key: string): string => {
 export function createRateLimiter(config: RateLimiterConfig): RequestHandler {
   const redisErrorStrategy = config.onRedisError ?? "fail-open";
   const enableLogging = config.enableLogging ?? true;
+  const rateLimitErrorMessage = config.errorMessage ?? "Too many requests";
 
   return async (
     req: Request,
@@ -137,7 +141,7 @@ export function createRateLimiter(config: RateLimiterConfig): RequestHandler {
         event: "rate_limit_exceeded",
         ...eventBase,
       });
-      sendTooManyRequestsResponse(res, result.resetTime);
+      sendTooManyRequestsResponse(res, result.resetTime, rateLimitErrorMessage);
       return;
     }
 

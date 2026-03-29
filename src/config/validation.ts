@@ -1,21 +1,16 @@
-import type { RateLimiterConfig } from "../types/rateLimiter.types.js";
+import type {
+  RateLimiterConfig,
+  RateLimiterConfigOverrides,
+  TokenBucketRuntimeConfig,
+} from "../types/rateLimiter.types.js";
 
-const DEFAULT_RATE_LIMIT_PREFIX = "rate_limit";
 const DEFAULT_REDIS_HOST = "127.0.0.1";
 const DEFAULT_REDIS_PORT = 6379;
 
-export interface ValidatedRateLimiterConfig extends RateLimiterConfig {
-  enableLogging: boolean;
-  enableFallback: boolean;
-  prefix: string;
-  onRedisError: "fail-open" | "fail-closed";
-}
-
-export interface RedisRuntimeConfig {
-  host: string;
-  port: number;
-  password?: string;
-}
+const DEFAULT_TOKEN_BUCKET_CAPACITY = 10;
+const DEFAULT_TOKEN_BUCKET_REFILL_RATE = 10 / 60;
+const DEFAULT_TOKEN_BUCKET_REDIS_PREFIX = "rateguard:token_bucket";
+const DEFAULT_RATE_LIMIT_ERROR_MESSAGE = "Too many requests";
 
 const ensurePositiveNumber = (name: string, value: number): void => {
   if (!Number.isFinite(value) || value <= 0) {
@@ -38,25 +33,88 @@ const parseRedisPort = (value: string | undefined): number => {
   return parsedPort;
 };
 
-export const validateRateLimiterConfig = (
+const resolveTokenBucketConfig = (
+  name: string,
+  input: Readonly<Partial<TokenBucketRuntimeConfig>>,
+  base: Readonly<TokenBucketRuntimeConfig>,
+): TokenBucketRuntimeConfig => {
+  const capacity = input.capacity ?? base.capacity;
+  const refillRate = input.refillRate ?? base.refillRate;
+  const redisKeyPrefix = (input.redisKeyPrefix ?? base.redisKeyPrefix).trim();
+  const ttlSeconds = input.ttlSeconds ?? base.ttlSeconds;
+
+  ensurePositiveNumber(`${name}.tokenBucket.capacity`, capacity);
+  ensurePositiveNumber(`${name}.tokenBucket.refillRate`, refillRate);
+
+  if (redisKeyPrefix.length === 0) {
+    throw new Error(`[config] "${name}.tokenBucket.redisKeyPrefix" cannot be empty.`);
+  }
+
+  if (ttlSeconds !== undefined) {
+    ensurePositiveNumber(`${name}.tokenBucket.ttlSeconds`, ttlSeconds);
+  }
+
+  return Object.freeze({
+    capacity,
+    refillRate,
+    redisKeyPrefix,
+    ...(ttlSeconds ? { ttlSeconds } : {}),
+  });
+};
+
+const ensureValidKeyGenerator = (
+  name: string,
+  keyGenerator: RateLimiterConfig["keyGenerator"],
+): void => {
+  if (keyGenerator !== undefined && typeof keyGenerator !== "function") {
+    throw new Error(`[config] "${name}.keyGenerator" must be a function when provided.`);
+  }
+};
+
+export interface RedisRuntimeConfig {
+  host: string;
+  port: number;
+  password?: string;
+}
+
+export const DEFAULT_RATE_LIMITER_CONFIG: Readonly<RateLimiterConfig> = Object.freeze({
+  tokenBucket: Object.freeze({
+    capacity: DEFAULT_TOKEN_BUCKET_CAPACITY,
+    refillRate: DEFAULT_TOKEN_BUCKET_REFILL_RATE,
+    redisKeyPrefix: DEFAULT_TOKEN_BUCKET_REDIS_PREFIX,
+  }),
+  errorMessage: DEFAULT_RATE_LIMIT_ERROR_MESSAGE,
+  enableLogging: true,
+  onRedisError: "fail-open",
+});
+
+export const resolveRateLimiterConfig = (
   configName: string,
-  input: Readonly<RateLimiterConfig>,
-): Readonly<ValidatedRateLimiterConfig> => {
-  ensurePositiveNumber(`${configName}.windowSizeInSeconds`, input.windowSizeInSeconds);
-  ensurePositiveNumber(`${configName}.maxRequests`, input.maxRequests);
+  overrides: Readonly<RateLimiterConfigOverrides> = {},
+  baseConfig: Readonly<RateLimiterConfig> = DEFAULT_RATE_LIMITER_CONFIG,
+): Readonly<RateLimiterConfig> => {
+  ensureValidKeyGenerator(configName, overrides.keyGenerator);
 
-  const windowMs = input.windowSizeInSeconds * 1_000;
-  ensurePositiveNumber(`${configName}.windowMs`, windowMs);
+  const resolvedTokenBucket = resolveTokenBucketConfig(
+    configName,
+    overrides.tokenBucket ?? {},
+    baseConfig.tokenBucket,
+  );
 
-  const resolvedConfig: ValidatedRateLimiterConfig = {
-    ...input,
-    enableLogging: input.enableLogging ?? true,
-    enableFallback: input.enableFallback ?? true,
-    prefix: input.prefix?.trim() || DEFAULT_RATE_LIMIT_PREFIX,
-    onRedisError: input.onRedisError ?? "fail-open",
+  const errorMessage = (overrides.errorMessage ?? baseConfig.errorMessage ?? "").trim();
+  if (errorMessage.length === 0) {
+    throw new Error(`[config] "${configName}.errorMessage" cannot be empty.`);
+  }
+
+  const resolved: RateLimiterConfig = {
+    tokenBucket: resolvedTokenBucket,
+    errorMessage,
+    enableLogging: overrides.enableLogging ?? baseConfig.enableLogging ?? true,
+    onRedisError: overrides.onRedisError ?? baseConfig.onRedisError ?? "fail-open",
+    keyGenerator: overrides.keyGenerator ?? baseConfig.keyGenerator,
   };
 
-  return Object.freeze(resolvedConfig);
+  return Object.freeze(resolved);
 };
 
 export const getValidatedRedisConfig = (): Readonly<RedisRuntimeConfig> => {

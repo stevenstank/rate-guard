@@ -8,6 +8,7 @@ const REDIS_COMMAND_TIMEOUT_MS = 2000;
 const MILLISECONDS_PER_SECOND = 1000;
 
 type RedisCommand<T> = () => Promise<T>;
+type RedisScriptArgument = string | number;
 
 const parseRedisNumber = (value: string, key: string): number => {
   const parsedValue = Number(value);
@@ -139,6 +140,86 @@ export class RedisService {
   public async delete(key: string): Promise<void> {
     await this.execute("delete", key, async (): Promise<void> => {
       await redisClient.del(key);
+    });
+  }
+
+  public async scriptLoad(script: string): Promise<string> {
+    return this.execute("script_load", "global", async (): Promise<string> => {
+      const result = await redisClient.script("LOAD", script);
+      if (typeof result !== "string") {
+        throw new Error("SCRIPT LOAD returned a non-string SHA value.");
+      }
+
+      return result;
+    });
+  }
+
+  public async evalSha(
+    sha: string,
+    keys: readonly string[],
+    args: readonly RedisScriptArgument[],
+  ): Promise<unknown[]> {
+    return this.execute("evalsha", keys[0] ?? "global", async (): Promise<unknown[]> => {
+      const result = await redisClient.evalsha(sha, keys.length, ...keys, ...args);
+      if (!Array.isArray(result)) {
+        throw new Error("EVALSHA returned a non-array result.");
+      }
+
+      return result;
+    });
+  }
+
+  public async eval(
+    script: string,
+    keys: readonly string[],
+    args: readonly RedisScriptArgument[],
+  ): Promise<unknown[]> {
+    return this.execute("eval", keys[0] ?? "global", async (): Promise<unknown[]> => {
+      const result = await redisClient.eval(script, keys.length, ...keys, ...args);
+      if (!Array.isArray(result)) {
+        throw new Error("EVAL returned a non-array result.");
+      }
+
+      return result;
+    });
+  }
+
+  public async getHash(
+    key: string,
+    fields: readonly string[],
+  ): Promise<Record<string, string> | null> {
+    return this.execute("get_hash", key, async (): Promise<Record<string, string> | null> => {
+      if (fields.length === 0) {
+        return {};
+      }
+
+      const values = await redisClient.hmget(key, ...fields);
+      const result: Record<string, string> = {};
+
+      fields.forEach((field, index): void => {
+        const value = values[index];
+        if (value !== null) {
+          result[field] = value;
+        }
+      });
+
+      return Object.keys(result).length > 0 ? result : null;
+    });
+  }
+
+  public async setHash(
+    key: string,
+    values: Readonly<Record<string, string>>,
+  ): Promise<void> {
+    await this.execute("set_hash", key, async (): Promise<void> => {
+      const flattenedEntries = Object.entries(values).flatMap(
+        ([field, value]): string[] => [field, value],
+      );
+      if (flattenedEntries.length === 0) {
+        return;
+      }
+
+      await redisClient.hset(key, ...flattenedEntries);
     });
   }
 
