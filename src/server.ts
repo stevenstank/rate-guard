@@ -17,10 +17,10 @@ const resolvePort = (value: string | undefined): number => {
 
 const port = resolvePort(process.env.PORT);
 
-const server = app.listen(port, () => {
+const server = app.listen(port, (): void => {
   info(`Server running on port ${port}`);
 });
 
-server.on("error", (serverError: Error) => {
+server.on("error", (serverError: Error): void => {
   logError(`Server failed to start: ${serverError.message}`);
 });

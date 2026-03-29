@@ -1,113 +1,117 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 import { info } from "../utils/logger.js";
-import {
-  runStoreMaintenance,
-  setRateLimitRecord,
-  type RateLimitRecord,
-} from "../store/rateLimitStore.js";
-import {
-  getOrCreateRecord,
-  getUpdatedRecordForRequest,
-  resolveIdentifier,
-  shouldBlockRequest,
-} from "../utils/rateLimitHelpers.js";
+import { MemoryStore } from "../store/memoryStore.js";
+import type { RateLimitConfig } from "../types/rateLimit.js";
+import type {
+  RateLimitStore,
+  RateLimitStoreRecord,
+} from "../types/rateLimitStore.js";
 
-export interface RateLimitOptions {
-  windowMs: number;
-  maxRequests: number;
-  cleanupIntervalMs: number;
-  maxStoreSize: number;
+const UNKNOWN_IDENTIFIER = "unknown";
+const TOO_MANY_REQUESTS_MESSAGE = "Too many requests";
+
+interface TooManyRequestsResponse {
+  error: string;
 }
 
-export const defaultRateLimitOptions: Readonly<RateLimitOptions> = Object.freeze(
-  {
-    windowMs: 60_000,
-    maxRequests: 10,
-    cleanupIntervalMs: 60_000,
-    maxStoreSize: 50_000,
-  },
-);
+const normalizeIpAddress = (ipAddress: string): string => {
+  if (ipAddress.startsWith("::ffff:")) {
+    return ipAddress.slice("::ffff:".length);
+  }
 
-const validateRateLimitOptions = (options: Readonly<RateLimitOptions>): void => {
-  if (options.windowMs <= 0) {
+  return ipAddress;
+};
+
+const resolveIpIdentifier = (req: Request): string => {
+  const rawIp = req.ip ?? req.socket.remoteAddress ?? UNKNOWN_IDENTIFIER;
+  const normalizedIp = normalizeIpAddress(rawIp.trim());
+
+  return normalizedIp.length > 0 ? normalizedIp : UNKNOWN_IDENTIFIER;
+};
+
+const resolveKeyGenerator = (
+  keyGenerator: RateLimitConfig["keyGenerator"],
+): ((req: Request) => string) => {
+  if (keyGenerator) {
+    return keyGenerator;
+  }
+
+  return (req: Request): string => {
+    return req.ip ?? UNKNOWN_IDENTIFIER;
+  };
+};
+
+const getRequestKey = (
+  req: Request,
+  keyGenerator: (req: Request) => string,
+): string => {
+  const generatedKey: string = keyGenerator(req);
+  const normalizedKey: string = normalizeIpAddress(generatedKey.trim());
+
+  if (normalizedKey.length > 0) {
+    return normalizedKey;
+  }
+
+  return resolveIpIdentifier(req);
+};
+
+const applyRateLimitHeaders = (
+  res: Response,
+  maxRequests: number,
+  remainingRequests: number,
+  resetTime: number,
+): void => {
+  res.setHeader("X-RateLimit-Limit", String(maxRequests));
+  res.setHeader("X-RateLimit-Remaining", String(remainingRequests));
+  res.setHeader("X-RateLimit-Reset", String(resetTime));
+};
+
+const sendTooManyRequestsResponse = (res: Response): void => {
+  const responseBody: TooManyRequestsResponse = {
+    error: TOO_MANY_REQUESTS_MESSAGE,
+  };
+  res.status(429).json(responseBody);
+};
+
+const validateConfig = (config: Readonly<RateLimitConfig>): void => {
+  if (config.windowMs <= 0) {
     throw new Error("rateLimiter config error: windowMs must be greater than 0");
   }
 
-  if (options.maxRequests <= 0) {
+  if (config.maxRequests <= 0) {
     throw new Error(
       "rateLimiter config error: maxRequests must be greater than 0",
     );
   }
-
-  if (options.cleanupIntervalMs <= 0) {
-    throw new Error(
-      "rateLimiter config error: cleanupIntervalMs must be greater than 0",
-    );
-  }
-
-  if (options.maxStoreSize <= 0) {
-    throw new Error(
-      "rateLimiter config error: maxStoreSize must be greater than 0",
-    );
-  }
 };
 
-export function rateLimiter(
-  optionsInput?: Readonly<Partial<RateLimitOptions>>,
-): RequestHandler {
-  const options: Readonly<RateLimitOptions> = {
-    windowMs: optionsInput?.windowMs ?? defaultRateLimitOptions.windowMs,
-    maxRequests: optionsInput?.maxRequests ?? defaultRateLimitOptions.maxRequests,
-    cleanupIntervalMs:
-      optionsInput?.cleanupIntervalMs ??
-      defaultRateLimitOptions.cleanupIntervalMs,
-    maxStoreSize: optionsInput?.maxStoreSize ?? defaultRateLimitOptions.maxStoreSize,
-  };
+export function createRateLimiter(config: RateLimitConfig): RequestHandler {
+  validateConfig(config);
 
-  validateRateLimitOptions(options);
+  const { windowMs, maxRequests, keyGenerator } = config;
+  const generateKey: (req: Request) => string = resolveKeyGenerator(keyGenerator);
+
+  const store: RateLimitStore = new MemoryStore();
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    const identifier = resolveIdentifier(req.ip || req.socket.remoteAddress);
-    const now = Date.now();
-    runStoreMaintenance(now, {
-      windowMs: options.windowMs,
-      cleanupIntervalMs: options.cleanupIntervalMs,
-      maxStoreSize: options.maxStoreSize,
-    });
+    const key: string = getRequestKey(req, generateKey);
+    const result: RateLimitStoreRecord = store.increment(key, windowMs);
+    const resetTime: number = result.resetTime;
+    const count: number = result.count;
+    const remainingRequests: number = Math.max(0, maxRequests - count);
 
-    const currentRecord = getOrCreateRecord(identifier, now);
-    const updatedRecord: Readonly<RateLimitRecord> = getUpdatedRecordForRequest(
-      currentRecord,
-      now,
-      options.windowMs,
-    );
+    applyRateLimitHeaders(res, maxRequests, remainingRequests, resetTime);
 
-    setRateLimitRecord(identifier, updatedRecord);
-    const method = req.method;
-    const path = req.path;
-    const resetTimestamp = updatedRecord.windowStart + options.windowMs;
-    const remainingRequests = Math.max(
-      0,
-      options.maxRequests - updatedRecord.count,
-    );
-
-    res.setHeader("X-RateLimit-Limit", String(options.maxRequests));
-    res.setHeader("X-RateLimit-Remaining", String(remainingRequests));
-    res.setHeader("X-RateLimit-Reset", String(resetTimestamp));
-
-    // Future enhancement: support trusted proxy headers via `trust proxy`.
     info(
-      `IP: ${identifier} | METHOD: ${method} | PATH: ${path} | WINDOW_MS: ${options.windowMs} | MAX_REQUESTS: ${options.maxRequests} | WINDOW_START: ${updatedRecord.windowStart} | CURRENT_COUNT: ${updatedRecord.count}`,
+      `IP: ${key} | METHOD: ${req.method} | PATH: ${req.path} | WINDOW_MS: ${windowMs} | MAX_REQUESTS: ${maxRequests} | RESET_TIME: ${resetTime} | CURRENT_COUNT: ${count}`,
     );
 
-    if (shouldBlockRequest(updatedRecord.count, options.maxRequests)) {
-      res.status(429).json({ error: "Too many requests" });
+    if (count > maxRequests) {
+      sendTooManyRequestsResponse(res);
       return;
     }
 
     next();
   };
 }
-
-export const rateLimiterMiddleware: RequestHandler = rateLimiter();
