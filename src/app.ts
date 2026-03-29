@@ -18,6 +18,11 @@ app.get("/health", healthRateLimiter, (_req: Request, res: Response): void => {
   res.status(200).json({ status: "ok" });
 });
 
+app.get("/", (_req: Request, res: Response): void => {
+  res.send("RateGuard API is running\n");
+});
+
+
 app.post("/login", (_req: Request, res: Response): void => {
   res.status(200).json({ ok: true, route: "login" });
 });
