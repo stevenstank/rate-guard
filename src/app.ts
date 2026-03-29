@@ -1,5 +1,8 @@
 import express, { type Express, type Request, type Response } from "express";
-import { rateLimiterMiddleware } from "./middleware/rateLimiter.js";
+import {
+  rateLimiter,
+  rateLimiterMiddleware,
+} from "./middleware/rateLimiter.js";
 
 export const app: Express = express();
 
@@ -10,3 +13,11 @@ app.use(rateLimiterMiddleware);
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok" });
 });
+
+app.get(
+  "/rl-test",
+  rateLimiter({ windowMs: 10_000, maxRequests: 3 }),
+  (_req: Request, res: Response) => {
+    res.json({ ok: true });
+  },
+);

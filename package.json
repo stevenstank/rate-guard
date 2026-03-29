@@ -4,9 +4,10 @@
   "description": "",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "node --watch --loader ts-node/esm src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test:rate-limit": "npm run build && node dist/tests/rateLimiter.scenarios.js"
   },
   "repository": {
     "type": "git",
