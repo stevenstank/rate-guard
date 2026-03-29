@@ -1,4 +1,4 @@
-import { RL_TEST_RATE_LIMIT_CONFIG } from "../config/rateLimit.js";
+import { RL_TEST_RATE_LIMIT_CONFIG } from "../config/rateLimit.config.js";
 import { MemoryStore } from "../store/memoryStore.js";
 import type { RateLimitStoreRecord } from "../types/rateLimitStore.js";
 
@@ -39,8 +39,9 @@ const withMockedTime = (timestamps: readonly number[], run: () => void): void =>
   }
 };
 
-const runScenarios = (): void => {
-  const windowMs = RL_TEST_RATE_LIMIT_CONFIG.windowMs;
+  const runScenarios = (): void => {
+  const windowMs =
+    RL_TEST_RATE_LIMIT_CONFIG.windowSizeInSeconds * 1_000;
   const maxRequests = RL_TEST_RATE_LIMIT_CONFIG.maxRequests;
   const baseTime = 1_700_000_000_000;
   const store = new MemoryStore();
