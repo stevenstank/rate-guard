@@ -1,46 +1,58 @@
-import type { RateLimitConfig } from "../types/rateLimit.types.js";
+import type { RateLimiterConfig } from "../types/rateLimiter.types.js";
+import { validateRateLimiterConfig } from "./validation.js";
 
-export interface RateLimitStoreConfig {
-  cleanupIntervalMs: number;
-  maxStoreSize: number;
-}
+const defaultRateLimitConfigInput: Readonly<RateLimiterConfig> = {
+  windowSizeInSeconds: 60,
+  maxRequests: 10,
+  enableLogging: true,
+  enableFallback: true,
+  prefix: "rate_limit",
+  onRedisError: "fail-open",
+};
 
-export const DEFAULT_RATE_LIMIT_CONFIG: Readonly<RateLimitConfig> = Object.freeze(
-  {
-    windowSizeInSeconds: 60,
-    maxRequests: 10,
-    prefix: "rate_limit",
-    enableRedis: true,
-  },
-);
+const rlTestRateLimitConfigInput: Readonly<RateLimiterConfig> = {
+  windowSizeInSeconds: 10,
+  maxRequests: 3,
+  enableLogging: false,
+  enableFallback: true,
+  prefix: "rate_limit",
+  onRedisError: "fail-open",
+};
 
-export const RL_TEST_RATE_LIMIT_CONFIG: Readonly<RateLimitConfig> = Object.freeze(
-  {
-    windowSizeInSeconds: 10,
-    maxRequests: 3,
-    prefix: "rate_limit",
-    enableRedis: false,
-  },
-);
+const loginRateLimitConfigInput: Readonly<RateLimiterConfig> = {
+  windowSizeInSeconds: 60,
+  maxRequests: 5,
+  enableLogging: true,
+  enableFallback: true,
+  prefix: "rate_limit",
+  onRedisError: "fail-open",
+};
 
-export const LOGIN_RATE_LIMIT_CONFIG: Readonly<RateLimitConfig> = Object.freeze(
-  {
-    windowSizeInSeconds: 60,
-    maxRequests: 5,
-    prefix: "rate_limit",
-    enableRedis: true,
-  },
-);
-
-export const API_RATE_LIMIT_CONFIG: Readonly<RateLimitConfig> = Object.freeze({
+const apiRateLimitConfigInput: Readonly<RateLimiterConfig> = {
   windowSizeInSeconds: 60,
   maxRequests: 100,
+  enableLogging: true,
+  enableFallback: true,
   prefix: "rate_limit",
-  enableRedis: true,
-});
+  onRedisError: "fail-open",
+};
 
-export const DEFAULT_RATE_LIMIT_STORE_CONFIG: Readonly<RateLimitStoreConfig> =
-  Object.freeze({
-    cleanupIntervalMs: 60_000,
-    maxStoreSize: 50_000,
-  });
+export const DEFAULT_RATE_LIMIT_CONFIG = validateRateLimiterConfig(
+  "DEFAULT_RATE_LIMIT_CONFIG",
+  defaultRateLimitConfigInput,
+);
+
+export const RL_TEST_RATE_LIMIT_CONFIG = validateRateLimiterConfig(
+  "RL_TEST_RATE_LIMIT_CONFIG",
+  rlTestRateLimitConfigInput,
+);
+
+export const LOGIN_RATE_LIMIT_CONFIG = validateRateLimiterConfig(
+  "LOGIN_RATE_LIMIT_CONFIG",
+  loginRateLimitConfigInput,
+);
+
+export const API_RATE_LIMIT_CONFIG = validateRateLimiterConfig(
+  "API_RATE_LIMIT_CONFIG",
+  apiRateLimitConfigInput,
+);

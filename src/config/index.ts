@@ -23,3 +23,10 @@ export const config: Readonly<AppConfig> = {
   port: parsePort(process.env.PORT),
   nodeEnv: process.env.NODE_ENV ?? "development",
 };
+
+export {
+  API_RATE_LIMIT_CONFIG,
+  DEFAULT_RATE_LIMIT_CONFIG,
+  LOGIN_RATE_LIMIT_CONFIG,
+  RL_TEST_RATE_LIMIT_CONFIG,
+} from "./rateLimit.config.js";

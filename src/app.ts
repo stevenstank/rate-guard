@@ -1,10 +1,10 @@
 import express, { type Express, type Request, type Response } from "express";
-import { createRateLimiter } from "./middleware/rateLimiter.js";
+import { createRateLimiter } from "./middleware/index.js";
 import {
   API_RATE_LIMIT_CONFIG,
   DEFAULT_RATE_LIMIT_CONFIG,
   LOGIN_RATE_LIMIT_CONFIG,
-} from "./config/rateLimit.config.js";
+} from "./config/index.js";
 
 export const app: Express = express();
 
