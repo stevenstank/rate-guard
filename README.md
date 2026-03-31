@@ -1,148 +1,108 @@
-
 # RateGuard
 
-A type-safe rate limiting middleware built with Node.js, Express, and TypeScript.
-Supports Fixed Window and Token Bucket algorithms with Redis for high-performance request control.
-
----
-
-## Overview
-
-RateGuard is a backend middleware designed to control how many requests a client can make within a given time frame. It helps prevent abuse, protects APIs from overload, and ensures fair usage across users.
-
-The project starts with a Fixed Window approach and evolves into a Token Bucket system for better accuracy and burst handling.
-
----
+Type-safe rate-limiting middleware built with Node.js, Express, and TypeScript.
+It uses a Redis-backed token bucket strategy for accurate request control and burst handling.
 
 ## Features
 
-* Type-safe implementation using TypeScript (no `any`)
-* Express middleware architecture
-* Fixed Window rate limiting
-* Token Bucket algorithm (advanced)
-* Redis-based storage for scalability
-* Configurable limits (window size, request count)
-* Per-user/IP request tracking
-* Clean and modular architecture
-
----
-
-## How It Works
-
-### Fixed Window
-
-* Tracks number of requests in a fixed time window (e.g. 60 seconds)
-* Resets count after the window expires
-* Simple and fast, but can allow bursts at window boundaries
-
-### Token Bucket
-
-* Each user has a “bucket” of tokens
-* Each request consumes one token
-* Tokens refill over time
-* Allows controlled bursts while preventing abuse
-
----
-
-## Tech Stack
-
-* Node.js
-* Express
-* TypeScript
-* Redis (ioredis)
-
----
+- TypeScript-first implementation (strict typing)
+- Express middleware integration
+- Token bucket rate limiting
+- Redis-backed counters for scalability
+- Configurable per-route limits
+- Pluggable key generation for per-user/IP control
+- Fail-open or fail-closed behavior on Redis errors
 
 ## Project Structure
 
-```
+```text
 src/
-  middleware/     # rate limiter middleware
-  services/       # core rate limiting logic (Redis, algorithms)
-  config/         # configuration types and constants
-  utils/          # helper functions
-  server.ts       # entry point
+  app.ts                 # Express app and route-level limiter usage
+  server.ts              # Server entrypoint
+  middleware/            # createRateLimiter middleware
+  services/              # token bucket + Redis logic
+  config/                # rate limit and app config
+  utils/                 # logger and helpers
+  tests/                 # unit/integration tests
 ```
-
----
 
 ## Installation
 
 ```bash
-git clone https://github.com/<your-username>/rateguard.git
-cd rateguard
+git clone https://github.com/stevenstank/rate-guard.git
+cd rate-guard
 npm install
 ```
 
----
-
-## Running the Project
+## Run
 
 ```bash
 npm run dev
 ```
 
----
+Build and run production:
+
+```bash
+npm run build
+npm start
+```
+
+Run tests:
+
+```bash
+npm test
+```
 
 ## Example Usage
 
 ```ts
 import express from "express";
-import { rateLimiter } from "./middleware/rateLimiter";
+import { createRateLimiter } from "./middleware/index.js";
 
 const app = express();
 
-app.use(rateLimiter({
-  windowSize: 60,
-  maxRequests: 100
-}));
-
-app.get("/", (req, res) => {
-  res.send("Hello World");
-});
+app.use(
+  "/api",
+  createRateLimiter({
+    tokenBucket: {
+      capacity: 100,
+      refillRate: 100 / 60,
+      redisKeyPrefix: "rateguard:token_bucket",
+    },
+    errorMessage: "Too many requests",
+    enableLogging: true,
+    onRedisError: "fail-open",
+  }),
+);
 ```
 
----
+## Redis Configuration
 
-## Redis Setup (if used)
+RateGuard reads Redis settings from environment variables:
 
-Make sure Redis is running locally or provide a connection URL:
+- `REDIS_HOST` (default: `127.0.0.1`)
+- `REDIS_PORT` (default: `6379`)
+- `REDIS_PASSWORD` (optional)
+- `REDIS_REQUIRED` (`true` to fail fast if host/port are missing)
 
-```ts
-import Redis from "ioredis";
+Example:
 
-const redis = new Redis();
+```bash
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_REQUIRED=false
 ```
 
----
+## Included Route Presets
 
-## Why Redis?
+In `src/app.ts`, the project applies separate configs for:
 
-* Extremely fast (in-memory)
-* Supports atomic operations like `INCR`
-* Built-in expiration for automatic cleanup
-* Ideal for rate limiting and caching
+- `/login`
+- `/api`
+- `/health`
 
----
-
-## Use Cases
-
-* API protection
-* Prevent brute force attacks
-* Limit abuse/spam
-* Fair usage enforcement
-
----
-
-## Future Improvements
-
-* Distributed rate limiting
-* CLI integration
-* Analytics dashboard
-* Per-route dynamic rules
-
----
+These are defined in `src/config/rateLimit.config.ts`.
 
 ## License
 
-MIT
+ISC
